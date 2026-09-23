@@ -1,18 +1,19 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { BodyInvalidoError } from './http/leerBody.js';
+import { conLogging } from './http/logger.js';
+import { enviarJson } from './http/respuestas.js';
+import { Router } from './http/router.js';
+import { actualizarJugador, crearJugador, eliminarJugador, listarJugadores } from './rutas/jugadores.js';
+import { actualizarTorneo, crearTorneo, eliminarTorneo, listarTorneos } from './rutas/torneos.js';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
 
-function enviarJson(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(body));
-}
-
-function handleHealth(res: ServerResponse): void {
+function handleHealth(_req: IncomingMessage, res: ServerResponse): void {
   enviarJson(res, 200, { status: 'ok' });
 }
 
-function handleBloqueante(res: ServerResponse): void {
+function handleBloqueante(_req: IncomingMessage, res: ServerResponse): void {
   const inicio = Date.now();
   console.log(`[bloqueante] inicio ${new Date(inicio).toISOString()}`);
 
@@ -28,7 +29,7 @@ function handleBloqueante(res: ServerResponse): void {
   enviarJson(res, 200, { tipo: 'bloqueante', ms, acum });
 }
 
-function handleAsincrono(res: ServerResponse): void {
+function handleAsincrono(_req: IncomingMessage, res: ServerResponse): void {
   const inicio = Date.now();
   console.log(`[asincrono] inicio ${new Date(inicio).toISOString()}`);
 
@@ -41,26 +42,39 @@ function handleAsincrono(res: ServerResponse): void {
   }, 3000);
 }
 
-function router(req: IncomingMessage, res: ServerResponse): void {
-  const { method, url } = req;
+const router = new Router();
+router.get('/health', handleHealth);
+router.get('/demo/bloqueante', handleBloqueante);
+router.get('/demo/asincrono', handleAsincrono);
+router.get('/torneos', listarTorneos);
+router.post('/torneos', crearTorneo);
+router.put('/torneos/:id', actualizarTorneo);
+router.delete('/torneos/:id', eliminarTorneo);
+router.get('/jugadores', listarJugadores);
+router.post('/jugadores', crearJugador);
+router.put('/jugadores/:id', actualizarJugador);
+router.delete('/jugadores/:id', eliminarJugador);
 
-  if (method === 'GET' && url === '/health') {
-    handleHealth(res);
-    return;
+async function despachar(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+    const encontrada = router.encontrar(req.method ?? 'GET', url.pathname);
+    if (!encontrada) {
+      enviarJson(res, 404, { error: 'Ruta no encontrada' });
+      return;
+    }
+    await encontrada.handler(req, res, encontrada.params);
+  } catch (error) {
+    if (error instanceof BodyInvalidoError) {
+      enviarJson(res, 400, { error: error.message });
+      return;
+    }
+    console.error('[error]', error);
+    enviarJson(res, 500, { error: 'Error interno del servidor' });
   }
-  if (method === 'GET' && url === '/demo/bloqueante') {
-    handleBloqueante(res);
-    return;
-  }
-  if (method === 'GET' && url === '/demo/asincrono') {
-    handleAsincrono(res);
-    return;
-  }
-
-  enviarJson(res, 404, { error: 'No encontrado' });
 }
 
-const server = createServer(router);
+const server = createServer(conLogging(despachar));
 
 server.listen(PORT, () => {
   console.log(`ChessHub MX backend escuchando en http://localhost:${PORT} (${NODE_ENV})`);
