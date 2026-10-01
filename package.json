@@ -5,6 +5,8 @@
   "main": "src/main.ts",
   "scripts": {
     "dev": "tsx watch --env-file=.env src/main.ts",
+    "build": "tsc",
+    "start": "node --env-file=.env dist/main.js",
     "generar:csv": "tsx scripts/generar-csv-jugadores.ts",
     "loadtest": "autocannon -c 50 -d 10 http://localhost:3000/health"
   },

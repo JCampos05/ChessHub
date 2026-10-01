@@ -1,19 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { AlcanceTorneo, EstadoTorneo, TipoRitmo } from '../dominio/enums.js';
 import { leerBodyJson, leerCampoBooleano, leerCampoEnum, leerCampoNumero, leerCampoTexto } from '../http/leerBody.js';
 import { enviarJson } from '../http/respuestas.js';
 import type { Params } from '../http/router.js';
-
-// Mismos nombres/valores que los enums de schema.prisma, para que no
-// haya que retraducir nada cuando Prisma Client se conecte de verdad.
-const ALCANCES = ['MUNICIPAL', 'ESTATAL', 'NACIONAL'] as const;
-type AlcanceTorneo = (typeof ALCANCES)[number];
-
-const ESTADOS_TORNEO = ['BORRADOR', 'INSCRIPCIONES_ABIERTAS', 'EN_CURSO', 'FINALIZADO', 'CANCELADO'] as const;
-type EstadoTorneo = (typeof ESTADOS_TORNEO)[number];
-
-const TIPOS_RITMO = ['CLASICO', 'RAPIDO', 'BLITZ'] as const;
-type TipoRitmo = (typeof TIPOS_RITMO)[number];
 
 interface Torneo {
   id: string;
@@ -53,10 +43,10 @@ type CamposTorneo = Pick<
 
 function leerCamposTorneo(body: unknown): CamposTorneo | undefined {
   const nombre = leerCampoTexto(body, 'nombre');
-  const alcance = leerCampoEnum(body, 'alcance', ALCANCES);
+  const alcance = leerCampoEnum(body, 'alcance', Object.values(AlcanceTorneo));
   const estadoId = leerCampoTexto(body, 'estadoId');
   const sistemaCompetenciaId = leerCampoTexto(body, 'sistemaCompetenciaId');
-  const ritmoTipo = leerCampoEnum(body, 'ritmoTipo', TIPOS_RITMO);
+  const ritmoTipo = leerCampoEnum(body, 'ritmoTipo', Object.values(TipoRitmo));
   const ritmoMinutosBase = leerCampoNumero(body, 'ritmoMinutosBase');
   const fechaInicio = leerCampoTexto(body, 'fechaInicio');
   const fechaFin = leerCampoTexto(body, 'fechaFin');
@@ -77,7 +67,7 @@ function leerCamposTorneo(body: unknown): CamposTorneo | undefined {
     fechaFin,
     creadoPorId,
     sede: leerCampoTexto(body, 'sede'),
-    estadoTorneo: leerCampoEnum(body, 'estadoTorneo', ESTADOS_TORNEO),
+    estadoTorneo: leerCampoEnum(body, 'estadoTorneo', Object.values(EstadoTorneo)),
     ritmoIncrementoSegundos: leerCampoNumero(body, 'ritmoIncrementoSegundos'),
     otorgaRatingFide: leerCampoBooleano(body, 'otorgaRatingFide'),
     otorgaRatingNacional: leerCampoBooleano(body, 'otorgaRatingNacional'),
@@ -113,7 +103,7 @@ export async function crearTorneo(req: IncomingMessage, res: ServerResponse): Pr
     // Valores con default: si no vinieron en el body, NO se dejan undefined
     // (eso rompería JSON.stringify y, peor, resetearía estos campos en un
     // update futuro que no quería tocarlos).
-    estadoTorneo: campos.estadoTorneo ?? 'BORRADOR',
+    estadoTorneo: campos.estadoTorneo ?? EstadoTorneo.Borrador,
     ritmoIncrementoSegundos: campos.ritmoIncrementoSegundos ?? 0,
     otorgaRatingFide: campos.otorgaRatingFide ?? false,
     otorgaRatingNacional: campos.otorgaRatingNacional ?? false,
