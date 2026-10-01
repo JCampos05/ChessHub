@@ -5,28 +5,28 @@ con soporte para torneos nacionales asignados a un estado).
 
 ## Estado actual
 
-Semana 02 (`v1.1.0-native-routing`): router manual modular sobre `node:http` (GET/POST/PUT/DELETE),
-parseo de body por streams, y rutas placeholder `/torneos` y `/jugadores` con arrays en memoria.
-Sin base de datos ni dominio de ajedrez todavía.
+Semana 03 (`v1.2.0-streams-buffers-cluster`): streaming de archivos grandes con `pipeline()`,
+cluster con N workers (`os.cpus().length` por defecto), graceful shutdown y prueba de carga con
+autocannon. Sin base de datos ni dominio de ajedrez todavía.
 
 ## Uso
 
 ```bash
 npm install
-npm run dev
+npm run generar:csv   # genera data/jugadores-ejemplo.csv (150k filas), solo hace falta una vez
+npm run dev            # levanta el cluster; CLUSTER_WORKERS=N para forzar el número de workers
+npm run loadtest        # en otra terminal, con el server corriendo: autocannon contra /health
 ```
 
 Endpoints disponibles:
 
-- `GET /health` - devuelve `{ "status": "ok" }`.
+- `GET /health` - devuelve `{ "status": "ok", "pid": <pid del worker> }`.
 - `GET /demo/bloqueante` - ejecuta un bucle síncrono pesado (bloquea el hilo principal).
 - `GET /demo/asincrono` - espera con `setTimeout` (no bloquea el hilo principal).
-- `GET /torneos` - lista los torneos en memoria.
-- `POST /torneos` - crea un torneo (`{ "nombre": "..." }`, 400 si falta).
-- `PUT /torneos/:id` - actualiza el nombre de un torneo (404 si no existe).
-- `DELETE /torneos/:id` - elimina un torneo (204, o 404 si no existe).
-- `GET /jugadores`, `POST /jugadores`, `PUT /jugadores/:id`, `DELETE /jugadores/:id` - mismo
-  patrón que `/torneos`.
+- `GET /torneos`, `POST /torneos`, `PUT /torneos/:id`, `DELETE /torneos/:id`.
+- `GET /jugadores`, `POST /jugadores`, `PUT /jugadores/:id`, `DELETE /jugadores/:id`.
+- `GET /reportes/jugadores` - transmite `data/jugadores-ejemplo.csv` como NDJSON usando
+  `Readable -> Transform -> Writable` con `pipeline()`, sin cargar el archivo completo en memoria.
 
 Para comprobar la diferencia entre I/O bloqueante y no bloqueante: en una terminal llama a
 `/demo/bloqueante` y, mientras corre, intenta `/health` desde otra terminal - se queda en cola

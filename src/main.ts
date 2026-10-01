@@ -1,81 +1,31 @@
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { BodyInvalidoError } from './http/leerBody.js';
-import { conLogging } from './http/logger.js';
-import { enviarJson } from './http/respuestas.js';
-import { Router } from './http/router.js';
-import { actualizarJugador, crearJugador, eliminarJugador, listarJugadores } from './rutas/jugadores.js';
-import { actualizarTorneo, crearTorneo, eliminarTorneo, listarTorneos } from './rutas/torneos.js';
+import cluster from 'node:cluster';
+import os from 'node:os';
+import { iniciarServidor } from './server.js';
 
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
-const NODE_ENV = process.env.NODE_ENV ?? 'development';
+const CORES_DISPONIBLES = os.cpus().length;
+const NUM_WORKERS = process.env.CLUSTER_WORKERS ? Number(process.env.CLUSTER_WORKERS) : CORES_DISPONIBLES;
 
-function handleHealth(_req: IncomingMessage, res: ServerResponse): void {
-  enviarJson(res, 200, { status: 'ok' });
-}
+if (cluster.isPrimary) {
+  console.log(`Primario ${process.pid}: iniciando ${NUM_WORKERS} workers (${CORES_DISPONIBLES} cores disponibles)`);
 
-function handleBloqueante(_req: IncomingMessage, res: ServerResponse): void {
-  const inicio = Date.now();
-  console.log(`[bloqueante] inicio ${new Date(inicio).toISOString()}`);
-
-  // Bucle síncrono pesado: ocupa el hilo principal por completo, así que
-  // el event loop no puede atender ninguna otra petición hasta que termine.
-  let acum = 0;
-  for (let i = 0; i < 5_000_000_000; i++) {
-    acum += i;
+  for (let i = 0; i < NUM_WORKERS; i++) {
+    cluster.fork();
   }
 
-  const ms = Date.now() - inicio;
-  console.log(`[bloqueante] fin (${ms}ms)`);
-  enviarJson(res, 200, { tipo: 'bloqueante', ms, acum });
-}
+  cluster.on('exit', (worker, code, señal) => {
+    console.log(`Worker ${worker.process.pid} terminó (código ${code}, señal ${señal ?? 'ninguna'})`);
+  });
 
-function handleAsincrono(_req: IncomingMessage, res: ServerResponse): void {
-  const inicio = Date.now();
-  console.log(`[asincrono] inicio ${new Date(inicio).toISOString()}`);
-
-  // setTimeout delega la espera al event loop: el hilo principal queda
-  // libre para seguir atendiendo otras peticiones mientras "transcurre" el tiempo.
-  setTimeout(() => {
-    const ms = Date.now() - inicio;
-    console.log(`[asincrono] fin (${ms}ms)`);
-    enviarJson(res, 200, { tipo: 'asincrono', ms });
-  }, 3000);
-}
-
-const router = new Router();
-router.get('/health', handleHealth);
-router.get('/demo/bloqueante', handleBloqueante);
-router.get('/demo/asincrono', handleAsincrono);
-router.get('/torneos', listarTorneos);
-router.post('/torneos', crearTorneo);
-router.put('/torneos/:id', actualizarTorneo);
-router.delete('/torneos/:id', eliminarTorneo);
-router.get('/jugadores', listarJugadores);
-router.post('/jugadores', crearJugador);
-router.put('/jugadores/:id', actualizarJugador);
-router.delete('/jugadores/:id', eliminarJugador);
-
-async function despachar(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  try {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    const encontrada = router.encontrar(req.method ?? 'GET', url.pathname);
-    if (!encontrada) {
-      enviarJson(res, 404, { error: 'Ruta no encontrada' });
-      return;
+  // El primario no escucha peticiones: su único trabajo es repartir SIGTERM/SIGINT
+  // a los workers para que cada uno cierre sus propias conexiones en curso.
+  const apagarPrimario = (señal: NodeJS.Signals): void => {
+    console.log(`Primario ${process.pid} recibió ${señal}, avisando a los workers...`);
+    for (const id in cluster.workers) {
+      cluster.workers[id]?.process.kill('SIGTERM');
     }
-    await encontrada.handler(req, res, encontrada.params);
-  } catch (error) {
-    if (error instanceof BodyInvalidoError) {
-      enviarJson(res, 400, { error: error.message });
-      return;
-    }
-    console.error('[error]', error);
-    enviarJson(res, 500, { error: 'Error interno del servidor' });
-  }
+  };
+  process.on('SIGTERM', apagarPrimario);
+  process.on('SIGINT', apagarPrimario);
+} else {
+  iniciarServidor();
 }
-
-const server = createServer(conLogging(despachar));
-
-server.listen(PORT, () => {
-  console.log(`ChessHub MX backend escuchando en http://localhost:${PORT} (${NODE_ENV})`);
-});

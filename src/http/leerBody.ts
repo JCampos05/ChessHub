@@ -36,3 +36,24 @@ export function leerCampoTexto(body: unknown, campo: string): string | undefined
   const valor = (body as Record<string, unknown>)[campo];
   return typeof valor === 'string' && valor.trim() !== '' ? valor : undefined;
 }
+
+export function leerCampoEnum<T extends string>(body: unknown, campo: string, valoresValidos: readonly T[]): T | undefined {
+  const valor = leerCampoTexto(body, campo);
+  return valor !== undefined && (valoresValidos as readonly string[]).includes(valor) ? (valor as T) : undefined;
+}
+
+export function leerCampoNumero(body: unknown, campo: string): number | undefined {
+  if (typeof body !== 'object' || body === null) {
+    return undefined;
+  }
+  const valor = (body as Record<string, unknown>)[campo];
+  return typeof valor === 'number' && Number.isFinite(valor) ? valor : undefined;
+}
+
+export function leerCampoBooleano(body: unknown, campo: string): boolean | undefined {
+  if (typeof body !== 'object' || body === null) {
+    return undefined;
+  }
+  const valor = (body as Record<string, unknown>)[campo];
+  return typeof valor === 'boolean' ? valor : undefined;
+}

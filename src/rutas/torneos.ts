@@ -1,27 +1,90 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { leerBodyJson, leerCampoTexto } from '../http/leerBody.js';
+import { leerBodyJson, leerCampoBooleano, leerCampoEnum, leerCampoNumero, leerCampoTexto } from '../http/leerBody.js';
 import { enviarJson } from '../http/respuestas.js';
 import type { Params } from '../http/router.js';
+
+// Mismos nombres/valores que los enums de schema.prisma, para que no
+// haya que retraducir nada cuando Prisma Client se conecte de verdad.
+const ALCANCES = ['MUNICIPAL', 'ESTATAL', 'NACIONAL'] as const;
+type AlcanceTorneo = (typeof ALCANCES)[number];
+
+const ESTADOS_TORNEO = ['BORRADOR', 'INSCRIPCIONES_ABIERTAS', 'EN_CURSO', 'FINALIZADO', 'CANCELADO'] as const;
+type EstadoTorneo = (typeof ESTADOS_TORNEO)[number];
+
+const TIPOS_RITMO = ['CLASICO', 'RAPIDO', 'BLITZ'] as const;
+type TipoRitmo = (typeof TIPOS_RITMO)[number];
 
 interface Torneo {
   id: string;
   nombre: string;
-  fecha_torneo: string;
+  alcance: AlcanceTorneo;
+  estadoTorneo: EstadoTorneo;
+  estadoId: string;
+  sistemaCompetenciaId: string;
+  ritmoTipo: TipoRitmo;
+  ritmoMinutosBase: number;
+  ritmoIncrementoSegundos: number;
+  otorgaRatingFide: boolean;
+  otorgaRatingNacional: boolean;
+  fechaInicio: string; // ISO date string; en Prisma es DateTime
+  fechaFin: string;
+  sede?: string;
+  creadoPorId: string;
+  createdAt: string;
 }
 
 const torneos: Torneo[] = [];
 
-type CamposTorneo = Omit<Torneo, 'id'>;
+type CamposTorneo = Pick<
+  Torneo,
+  | 'nombre'
+  | 'alcance'
+  | 'estadoId'
+  | 'sistemaCompetenciaId'
+  | 'ritmoTipo'
+  | 'ritmoMinutosBase'
+  | 'fechaInicio'
+  | 'fechaFin'
+  | 'creadoPorId'
+  | 'sede'
+> &
+  Partial<Pick<Torneo, 'estadoTorneo' | 'ritmoIncrementoSegundos' | 'otorgaRatingFide' | 'otorgaRatingNacional'>>;
 
 function leerCamposTorneo(body: unknown): CamposTorneo | undefined {
   const nombre = leerCampoTexto(body, 'nombre');
-  const fecha_torneo = leerCampoTexto(body, 'fecha_torneo');
-  if (!nombre || !fecha_torneo) {
+  const alcance = leerCampoEnum(body, 'alcance', ALCANCES);
+  const estadoId = leerCampoTexto(body, 'estadoId');
+  const sistemaCompetenciaId = leerCampoTexto(body, 'sistemaCompetenciaId');
+  const ritmoTipo = leerCampoEnum(body, 'ritmoTipo', TIPOS_RITMO);
+  const ritmoMinutosBase = leerCampoNumero(body, 'ritmoMinutosBase');
+  const fechaInicio = leerCampoTexto(body, 'fechaInicio');
+  const fechaFin = leerCampoTexto(body, 'fechaFin');
+  const creadoPorId = leerCampoTexto(body, 'creadoPorId');
+
+  if (!nombre || !alcance || !estadoId || !sistemaCompetenciaId || !ritmoTipo || ritmoMinutosBase === undefined || !fechaInicio || !fechaFin || !creadoPorId) {
     return undefined;
   }
-  return { nombre, fecha_torneo };
+
+  return {
+    nombre,
+    alcance,
+    estadoId,
+    sistemaCompetenciaId,
+    ritmoTipo,
+    ritmoMinutosBase,
+    fechaInicio,
+    fechaFin,
+    creadoPorId,
+    sede: leerCampoTexto(body, 'sede'),
+    estadoTorneo: leerCampoEnum(body, 'estadoTorneo', ESTADOS_TORNEO),
+    ritmoIncrementoSegundos: leerCampoNumero(body, 'ritmoIncrementoSegundos'),
+    otorgaRatingFide: leerCampoBooleano(body, 'otorgaRatingFide'),
+    otorgaRatingNacional: leerCampoBooleano(body, 'otorgaRatingNacional'),
+  };
 }
+
+const CAMPOS_REQUERIDOS = 'nombre, alcance, estadoId, sistemaCompetenciaId, ritmoTipo, ritmoMinutosBase, fechaInicio, fechaFin y creadoPorId son requeridos';
 
 export async function listarTorneos(_req: IncomingMessage, res: ServerResponse): Promise<void> {
   enviarJson(res, 200, torneos);
@@ -31,10 +94,30 @@ export async function crearTorneo(req: IncomingMessage, res: ServerResponse): Pr
   const body = await leerBodyJson(req);
   const campos = leerCamposTorneo(body);
   if (!campos) {
-    enviarJson(res, 400, { error: 'nombre y fecha_torneo son requeridos' });
+    enviarJson(res, 400, { error: CAMPOS_REQUERIDOS });
     return;
   }
-  const torneo: Torneo = { id: randomUUID(), ...campos };
+  const torneo: Torneo = {
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    nombre: campos.nombre,
+    alcance: campos.alcance,
+    estadoId: campos.estadoId,
+    sistemaCompetenciaId: campos.sistemaCompetenciaId,
+    ritmoTipo: campos.ritmoTipo,
+    ritmoMinutosBase: campos.ritmoMinutosBase,
+    fechaInicio: campos.fechaInicio,
+    fechaFin: campos.fechaFin,
+    creadoPorId: campos.creadoPorId,
+    sede: campos.sede,
+    // Valores con default: si no vinieron en el body, NO se dejan undefined
+    // (eso rompería JSON.stringify y, peor, resetearía estos campos en un
+    // update futuro que no quería tocarlos).
+    estadoTorneo: campos.estadoTorneo ?? 'BORRADOR',
+    ritmoIncrementoSegundos: campos.ritmoIncrementoSegundos ?? 0,
+    otorgaRatingFide: campos.otorgaRatingFide ?? false,
+    otorgaRatingNacional: campos.otorgaRatingNacional ?? false,
+  };
   torneos.push(torneo);
   enviarJson(res, 201, torneo);
 }
@@ -48,10 +131,28 @@ export async function actualizarTorneo(req: IncomingMessage, res: ServerResponse
   const body = await leerBodyJson(req);
   const campos = leerCamposTorneo(body);
   if (!campos) {
-    enviarJson(res, 400, { error: 'nombre y fecha_torneo son requeridos' });
+    enviarJson(res, 400, { error: CAMPOS_REQUERIDOS });
     return;
   }
-  Object.assign(torneo, campos);
+
+  torneo.nombre = campos.nombre;
+  torneo.alcance = campos.alcance;
+  torneo.estadoId = campos.estadoId;
+  torneo.sistemaCompetenciaId = campos.sistemaCompetenciaId;
+  torneo.ritmoTipo = campos.ritmoTipo;
+  torneo.ritmoMinutosBase = campos.ritmoMinutosBase;
+  torneo.fechaInicio = campos.fechaInicio;
+  torneo.fechaFin = campos.fechaFin;
+  torneo.creadoPorId = campos.creadoPorId;
+  torneo.sede = campos.sede;
+  // Estos 4 solo se tocan si vinieron explícitos en el body — si no, el PUT
+  // de "solo cambié el nombre" no debe resetear el estado del torneo ni el
+  // ritmo a sus defaults.
+  if (campos.estadoTorneo !== undefined) torneo.estadoTorneo = campos.estadoTorneo;
+  if (campos.ritmoIncrementoSegundos !== undefined) torneo.ritmoIncrementoSegundos = campos.ritmoIncrementoSegundos;
+  if (campos.otorgaRatingFide !== undefined) torneo.otorgaRatingFide = campos.otorgaRatingFide;
+  if (campos.otorgaRatingNacional !== undefined) torneo.otorgaRatingNacional = campos.otorgaRatingNacional;
+
   enviarJson(res, 200, torneo);
 }
 

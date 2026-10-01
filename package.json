@@ -4,7 +4,9 @@
   "description": "ChessHub MX - backend de gestión de torneos de ajedrez",
   "main": "src/main.ts",
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/main.ts"
+    "dev": "tsx watch --env-file=.env src/main.ts",
+    "generar:csv": "tsx scripts/generar-csv-jugadores.ts",
+    "loadtest": "autocannon -c 50 -d 10 http://localhost:3000/health"
   },
   "repository": {
     "type": "git",
@@ -20,6 +22,7 @@
   "homepage": "https://github.com/JCampos05/ChessHub#readme",
   "devDependencies": {
     "@types/node": "^26.6.2",
+    "autocannon": "^8.0.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }

@@ -1,0 +1,423 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL") // Aiven Postgres, nunca hardcodeado
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+enum RolUsuario {
+  ADMIN_FENAMAC
+  ADMIN_ESTATAL
+  ADMIN_MUNICIPAL
+  ADMIN_TORNEO
+  ARBITRO
+  STAFF
+}
+
+enum NivelArbitro {
+  OFICIAL
+  NACIONAL
+  FIDE
+  INTERNACIONAL
+}
+
+enum AlcanceTorneo {
+  MUNICIPAL
+  ESTATAL
+  NACIONAL
+}
+
+enum EstadoTorneo {
+  BORRADOR
+  INSCRIPCIONES_ABIERTAS
+  EN_CURSO
+  FINALIZADO
+  CANCELADO
+}
+
+enum TipoRitmo {
+  CLASICO
+  RAPIDO
+  BLITZ
+}
+
+enum TipoRating {
+  FIDE
+  NACIONAL
+  ESTATAL
+}
+
+enum EstadoInscripcion {
+  PENDIENTE
+  CONFIRMADA
+  CANCELADA
+}
+
+enum ResultadoPartida {
+  PENDIENTE
+  BLANCAS_GANA
+  NEGRAS_GANA
+  TABLAS
+  WO_BLANCAS
+  WO_NEGRAS
+}
+
+enum TipoTransaccion {
+  INGRESO
+  EGRESO
+}
+
+enum TipoEvidencia {
+  ACTA
+  FOTO
+  DOCUMENTO
+}
+
+// ---------------------------------------------------------------------------
+// IDENTIDAD Y TERRITORIO
+// ---------------------------------------------------------------------------
+
+model Usuario {
+  id String @id @default(uuid())
+  email String @unique
+  passwordHash String
+  activo Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roles UsuarioRol[]
+  jugador Jugador?
+  torneosCreados Torneo[] @relation("TorneoCreadoPor")
+  ratingsCertificados Rating[] @relation("RatingCertificadoPor")
+  evidenciasSubidas Evidencia[]
+  transacciones Transaccion[]
+
+  @@map("usuarios")
+}
+
+// Un usuario puede tener varios roles simultáneos, cada uno con su propio ámbito.
+// Ej: la misma persona puede ser AdminEstatal de Sinaloa Y Árbitro de un torneo.
+model UsuarioRol {
+  id String @id @default(uuid())
+  usuarioId String
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+  rol RolUsuario
+  estadoId String?
+  estado Estado? @relation(fields: [estadoId], references: [id])
+  torneoId String?
+  torneo Torneo? @relation(fields: [torneoId], references: [id])
+  nivelArbitro NivelArbitro? // solo aplica si rol = ARBITRO
+  createdAt DateTime @default(now())
+
+  @@unique([usuarioId, rol, estadoId, torneoId])
+  @@map("usuario_roles")
+}
+
+model Estado {
+  id String @id @default(uuid())
+  nombre String @unique
+  clave String @unique // ej. "SIN", "SON" — código corto
+  dominio String @unique // subdominio de búsqueda de torneos por estado
+
+  usuarioRoles UsuarioRol[]
+  jugadores Jugador[]
+  torneos Torneo[]
+
+  @@map("estados")
+}
+
+model Jugador {
+  id String @id @default(uuid())
+  usuarioId String? @unique // opcional: no todo jugador tiene cuenta propia
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+  nombre String
+  apellidos String
+  fechaNacimiento DateTime
+  estadoId String
+  estado Estado @relation(fields: [estadoId], references: [id])
+  club String?
+  idFederacion String? @unique // folio FIDE/nacional si existe
+  activo Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  ratings Rating[]
+  inscripciones Inscripcion[]
+  mesasComoBlancas Mesa[] @relation("PartidaBlancas")
+  mesasComoNegras Mesa[] @relation("PartidaNegras")
+  equiposCapitaneados Equipo[] @relation("EquipoCapitan")
+  equipos EquipoJugador[]
+  premios Premio[]
+
+  @@map("jugadores")
+}
+
+// Historial de ratings — permite auditar cambios en el tiempo, no solo el valor actual
+model Rating {
+  id String @id @default(uuid())
+  jugadorId String
+  jugador Jugador @relation(fields: [jugadorId], references: [id])
+  tipo TipoRating
+  valor Int
+  fecha DateTime @default(now())
+  certificadoPorId String? // Usuario admin que certificó (AdminEstatal A.O.+ o AdminFenamac)
+  certificadoPor Usuario? @relation("RatingCertificadoPor", fields: [certificadoPorId], references: [id])
+
+  @@index([jugadorId, tipo])
+  @@map("ratings")
+}
+
+// ---------------------------------------------------------------------------
+// CATÁLOGOS DE COMPETENCIA
+// No son enums: la FENAMAC / AdminFenamac puede agregar o desactivar sistemas y
+// métodos de desempate sin requerir migración de esquema ni redeploy.
+// ---------------------------------------------------------------------------
+
+model SistemaCompetencia {
+  id String @id @default(uuid())
+  clave String @unique // ej. "SUIZO" — referenciado por el motor de pareo
+  nombre String
+  descripcion String?
+  esPorEquipos Boolean @default(false) // el motor de pareo necesita saber esto sin parsear el nombre
+  activo Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  torneos Torneo[]
+
+  @@map("sistemas_competencia")
+}
+
+model MetodoDesempate {
+  id String @id @default(uuid())
+  clave String @unique // ej. "BUCHHOLZ" — referenciado por el motor de cálculo de desempates
+  nombre String
+  descripcion String?
+  activo Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  torneos TorneoMetodoDesempate[]
+
+  @@map("metodos_desempate")
+}
+
+// Tabla de unión con orden explícito: un torneo puede usar varios métodos de
+// desempate aplicados en cascada (1º Buchholz, 2º Sonneborn-Berger, etc.)
+model TorneoMetodoDesempate {
+  torneoId String
+  torneo Torneo @relation(fields: [torneoId], references: [id])
+  metodoDesempateId String
+  metodoDesempate MetodoDesempate @relation(fields: [metodoDesempateId], references: [id])
+  orden Int // prioridad de aplicación, empezando en 1
+
+  @@id([torneoId, metodoDesempateId])
+  @@map("torneo_metodos_desempate")
+}
+
+// ---------------------------------------------------------------------------
+// TORNEOS
+// ---------------------------------------------------------------------------
+
+model Torneo {
+  id String @id @default(uuid())
+  nombre String
+  alcance AlcanceTorneo
+  estadoTorneo EstadoTorneo @default(BORRADOR)
+  estadoId String // SIEMPRE requerido, incluso si alcance = NACIONAL
+  estado Estado @relation(fields: [estadoId], references: [id])
+  sistemaCompetenciaId String
+  sistemaCompetencia SistemaCompetencia @relation(fields: [sistemaCompetenciaId], references: [id])
+  ritmoTipo TipoRitmo
+  ritmoMinutosBase Int
+  ritmoIncrementoSegundos Int @default(0)
+  metodosDesempate TorneoMetodoDesempate[]
+  otorgaRatingFide Boolean @default(false)
+  otorgaRatingNacional Boolean @default(false)
+  fechaInicio DateTime
+  fechaFin DateTime
+  sede String?
+  creadoPorId String
+  creadoPor Usuario @relation("TorneoCreadoPor", fields: [creadoPorId], references: [id])
+  createdAt DateTime @default(now())
+
+  categorias Categoria[]
+  inscripciones Inscripcion[]
+  equipos Equipo[]
+  rondas Ronda[]
+  premios Premio[]
+  transacciones Transaccion[]
+  evidencias Evidencia[]
+  usuarioRoles UsuarioRol[]
+
+  @@index([estadoId, alcance])
+  @@map("torneos")
+}
+
+model Categoria {
+  id String @id @default(uuid())
+  torneoId String
+  torneo Torneo @relation(fields: [torneoId], references: [id])
+  nombre String
+  edadMin Int?
+  edadMax Int?
+  ratingMin Int?
+  ratingMax Int?
+
+  inscripciones Inscripcion[]
+  premios Premio[]
+
+  @@map("categorias")
+}
+
+model Equipo {
+  id String @id @default(uuid())
+  torneoId String
+  torneo Torneo @relation(fields: [torneoId], references: [id])
+  nombre String
+  capitanJugadorId String?
+  capitan Jugador? @relation("EquipoCapitan", fields: [capitanJugadorId], references: [id])
+
+  integrantes EquipoJugador[]
+  inscripciones Inscripcion[]
+  premios Premio[]
+  mesasBlancas Mesa[] @relation("MesaEquipoBlancas")
+  mesasNegras Mesa[] @relation("MesaEquipoNegras")
+
+  @@map("equipos")
+}
+
+// Tabla de unión explícita: un jugador puede pertenecer a distintos equipos en distintos torneos
+model EquipoJugador {
+  equipoId String
+  equipo Equipo @relation(fields: [equipoId], references: [id])
+  jugadorId String
+  jugador Jugador @relation(fields: [jugadorId], references: [id])
+  tablero Int? // número de tablero asignado dentro del equipo
+
+  @@id([equipoId, jugadorId])
+  @@map("equipo_jugadores")
+}
+
+model Inscripcion {
+  id String @id @default(uuid())
+  torneoId String
+  torneo Torneo @relation(fields: [torneoId], references: [id])
+  jugadorId String
+  jugador Jugador @relation(fields: [jugadorId], references: [id])
+  categoriaId String?
+  categoria Categoria? @relation(fields: [categoriaId], references: [id])
+  equipoId String?
+  equipo Equipo? @relation(fields: [equipoId], references: [id])
+  estado EstadoInscripcion @default(PENDIENTE)
+  montoPagado Decimal? @db.Decimal(10, 2)
+  fechaInscripcion DateTime @default(now())
+
+  @@unique([torneoId, jugadorId]) // invariante de dominio: no duplicar inscripción
+  @@map("inscripciones")
+}
+
+// ---------------------------------------------------------------------------
+// COMPETENCIA: RONDAS, MESAS, PARTIDAS
+// ---------------------------------------------------------------------------
+
+model Ronda {
+  id String @id @default(uuid())
+  torneoId String
+  torneo Torneo @relation(fields: [torneoId], references: [id])
+  numero Int
+  fecha DateTime
+  publicada Boolean @default(false)
+  cerrada Boolean @default(false)
+
+  mesas Mesa[]
+
+  @@unique([torneoId, numero])
+  @@map("rondas")
+}
+
+model Mesa {
+  id String @id @default(uuid())
+  rondaId String
+  ronda Ronda @relation(fields: [rondaId], references: [id])
+  numero Int
+  jugadorBlancasId String
+  jugadorBlancas Jugador @relation("PartidaBlancas", fields: [jugadorBlancasId], references: [id])
+  jugadorNegrasId String? // null = bye (jugador libre en la ronda)
+  jugadorNegras Jugador? @relation("PartidaNegras", fields: [jugadorNegrasId], references: [id])
+  equipoBlancasId String? // solo en ROUND_ROBIN_EQUIPO
+  equipoBlancas Equipo? @relation("MesaEquipoBlancas", fields: [equipoBlancasId], references: [id])
+  equipoNegrasId String?
+  equipoNegras Equipo? @relation("MesaEquipoNegras", fields: [equipoNegrasId], references: [id])
+
+  partida Partida?
+
+  @@unique([rondaId, numero])
+  @@map("mesas")
+}
+
+model Partida {
+  id String @id @default(uuid())
+  mesaId String @unique
+  mesa Mesa @relation(fields: [mesaId], references: [id])
+  resultado ResultadoPartida @default(PENDIENTE)
+  pgn String? @db.Text // notación de la partida, si se captura
+  duracionSegundos Int?
+  registradaEn DateTime?
+
+  evidencias Evidencia[]
+
+  @@map("partidas")
+}
+
+// ---------------------------------------------------------------------------
+// PREMIOS, EVIDENCIAS, FINANZAS
+// ---------------------------------------------------------------------------
+
+model Premio {
+  id String @id @default(uuid())
+  torneoId String
+  torneo Torneo @relation(fields: [torneoId], references: [id])
+  categoriaId String?
+  categoria Categoria? @relation(fields: [categoriaId], references: [id])
+  jugadorId String?
+  jugador Jugador? @relation(fields: [jugadorId], references: [id])
+  equipoId String?
+  equipo Equipo? @relation(fields: [equipoId], references: [id])
+  posicion Int
+  descripcion String
+
+  @@map("premios")
+}
+
+model Evidencia {
+  id String @id @default(uuid())
+  torneoId String?
+  torneo Torneo? @relation(fields: [torneoId], references: [id])
+  partidaId String?
+  partida Partida? @relation(fields: [partidaId], references: [id])
+  tipo TipoEvidencia
+  url String // URL de Cloudinary
+  subidoPorId String
+  subidoPor Usuario @relation(fields: [subidoPorId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@map("evidencias")
+}
+
+model Transaccion {
+  id String @id @default(uuid())
+  torneoId String
+  torneo Torneo @relation(fields: [torneoId], references: [id])
+  tipo TipoTransaccion
+  concepto String
+  monto Decimal @db.Decimal(10, 2)
+  fecha DateTime @default(now())
+  registradoPorId String
+  registradoPor Usuario @relation(fields: [registradoPorId], references: [id])
+
+  @@map("transacciones")
+}
