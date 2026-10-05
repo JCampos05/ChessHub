@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { AlcanceTorneo, EstadoTorneo, TipoRitmo } from '../dominio/enums.js';
+import { AlcanceTorneo, EstadoTorneo, TipoRitmo } from '../domain/enums.js';
 import { leerBodyJson, leerCampoBooleano, leerCampoEnum, leerCampoNumero, leerCampoTexto } from '../http/leerBody.js';
 import { enviarJson } from '../http/respuestas.js';
 import type { Params } from '../http/router.js';

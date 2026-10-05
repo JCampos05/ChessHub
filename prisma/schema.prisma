@@ -35,7 +35,7 @@ enum AlcanceTorneo {
 
 enum EstadoTorneo {
   BORRADOR
-  INSCRIPCIONES_ABIERTAS
+  PUBLICADO
   EN_CURSO
   FINALIZADO
   CANCELADO
@@ -113,6 +113,7 @@ model UsuarioRol {
   torneoId String?
   torneo Torneo? @relation(fields: [torneoId], references: [id])
   nivelArbitro NivelArbitro? // solo aplica si rol = ARBITRO
+  permisos String[] @default([]) // claves atomicas, ej. registrar_resultado - ver domain/rbac.md
   createdAt DateTime @default(now())
 
   @@unique([usuarioId, rol, estadoId, torneoId])
