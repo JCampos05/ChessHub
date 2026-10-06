@@ -37,8 +37,6 @@ export class CalcularTablaPosiciones {
       }
     }
 
-    return [...puntosPorJugador.entries()]
-      .map(([jugadorId, puntos]) => ({ jugadorId, puntos }))
-      .sort((a, b) => b.puntos - a.puntos);
+    return [...puntosPorJugador.entries()].map(([jugadorId, puntos]) => ({ jugadorId, puntos })).sort((a, b) => b.puntos - a.puntos);
   }
 }

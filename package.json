@@ -8,7 +8,21 @@
     "build": "tsc",
     "start": "node --env-file=.env dist/main.js",
     "generar:csv": "tsx scripts/generar-csv-jugadores.ts",
-    "loadtest": "autocannon -c 50 -d 10 http://localhost:3000/health"
+    "loadtest": "autocannon -c 50 -d 10 http://localhost:3000/health",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
   },
   "repository": {
     "type": "git",
@@ -23,9 +37,18 @@
   },
   "homepage": "https://github.com/JCampos05/ChessHub#readme",
   "devDependencies": {
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^26.6.2",
     "autocannon": "^8.0.0",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.9",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.0"
   }
 }

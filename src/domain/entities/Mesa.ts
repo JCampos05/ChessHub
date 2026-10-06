@@ -22,7 +22,15 @@ export class Mesa {
 
   static crear(props: PropsMesa): Mesa {
     Mesa.validarJugadores(props.jugadorBlancasId, props.jugadorNegrasId);
-    return new Mesa(randomUUID(), props.rondaId, props.numero, props.jugadorBlancasId, props.jugadorNegrasId, props.equipoBlancasId, props.equipoNegrasId);
+    return new Mesa(
+      randomUUID(),
+      props.rondaId,
+      props.numero,
+      props.jugadorBlancasId,
+      props.jugadorNegrasId,
+      props.equipoBlancasId,
+      props.equipoNegrasId,
+    );
   }
 
   get jugadorBlancasId(): string {

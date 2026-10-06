@@ -52,7 +52,17 @@ function leerCamposTorneo(body: unknown): CamposTorneo | undefined {
   const fechaFin = leerCampoTexto(body, 'fechaFin');
   const creadoPorId = leerCampoTexto(body, 'creadoPorId');
 
-  if (!nombre || !alcance || !estadoId || !sistemaCompetenciaId || !ritmoTipo || ritmoMinutosBase === undefined || !fechaInicio || !fechaFin || !creadoPorId) {
+  if (
+    !nombre ||
+    !alcance ||
+    !estadoId ||
+    !sistemaCompetenciaId ||
+    !ritmoTipo ||
+    ritmoMinutosBase === undefined ||
+    !fechaInicio ||
+    !fechaFin ||
+    !creadoPorId
+  ) {
     return undefined;
   }
 
@@ -74,7 +84,8 @@ function leerCamposTorneo(body: unknown): CamposTorneo | undefined {
   };
 }
 
-const CAMPOS_REQUERIDOS = 'nombre, alcance, estadoId, sistemaCompetenciaId, ritmoTipo, ritmoMinutosBase, fechaInicio, fechaFin y creadoPorId son requeridos';
+const CAMPOS_REQUERIDOS =
+  'nombre, alcance, estadoId, sistemaCompetenciaId, ritmoTipo, ritmoMinutosBase, fechaInicio, fechaFin y creadoPorId son requeridos';
 
 export async function listarTorneos(_req: IncomingMessage, res: ServerResponse): Promise<void> {
   enviarJson(res, 200, torneos);

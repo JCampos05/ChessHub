@@ -1,7 +1,7 @@
 # ChessHub MX - Backend
 
 Sistema de gestión integral de eventos y torneos de ajedrez (organización estatal/municipal,
-con soporte para torneos nacionales asignados a un estado). 
+con soporte para torneos nacionales asignados a un estado).
 
 ## Estado actual
 
@@ -33,8 +33,30 @@ Para comprobar la diferencia entre I/O bloqueante y no bloqueante: en una termin
 hasta que el bucle termina. Repite la prueba con `/demo/asincrono` y verás que `/health`
 responde de inmediato aunque la demo aún esté "esperando".
 
+## Herramientas de desarrollo
+
+```bash
+npm run lint           # ESLint sobre todo src/ (no-explicit-any, no-unused-vars, y tipo de
+                        # retorno explícito obligatorio en domain/ y application/)
+npm run lint:fix        # igual, pero corrige lo que se pueda automáticamente
+npm run format          # Prettier --write sobre todo el repo
+npm run format:check    # Prettier --check, sin modificar archivos (usado en CI más adelante)
+```
+
+Un hook de Git `pre-commit` (Husky + lint-staged) corre ESLint y Prettier solo sobre los
+archivos en stage antes de permitir el commit. Un hook `commit-msg` (commitlint,
+`@commitlint/config-conventional`) rechaza cualquier mensaje que no siga Conventional Commits
+(`feat:`, `fix:`, `chore:`, etc.) - ambos hooks son obligatorios, no se pueden saltar sin
+`--no-verify`.
+
+**Nota de versión de TypeScript:** el proyecto usa `typescript@~6.0.3` (estable), no la 7.x
+preview (`tsgo`) - `typescript-eslint` todavía no soporta TS 7 (ver
+[issue #10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940)), y una sola
+versión de TypeScript para todo el toolchain (build + lint + futuro Jest) evita fricción
+innecesaria.
+
 ## Arquitectura futura
 
 A partir de la Semana 05 el proyecto migra a Clean Architecture (`domain/`, `application/`,
 `infrastructure/`, `presentation/`), con Express, Prisma/Postgres, JWT + RBAC propios, Redis
-y WebSockets. 
+y WebSockets.
